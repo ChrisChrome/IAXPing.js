@@ -6,6 +6,29 @@ const SUBCLASS_ACK = 0x04;
 const SUBCLASS_PONG = 0x03;
 const SUBCLASS_POKE = 0x1e;
 
+function createCodedError(code, message, cause) {
+	const err = new Error(message);
+	err.code = code;
+	if (cause !== undefined) {
+		err.cause = cause;
+	}
+	return err;
+}
+
+function toCodedError(err, defaultCode, defaultMessage) {
+	if (err && typeof err === "object" && typeof err.code === "string" && typeof err.message === "string") {
+		return err;
+	}
+
+	if (err && typeof err === "object") {
+		const code = typeof err.code === "string" ? err.code : defaultCode;
+		const message = typeof err.message === "string" && err.message.length > 0 ? err.message : defaultMessage;
+		return createCodedError(code, message, err);
+	}
+
+	return createCodedError(defaultCode, defaultMessage, err);
+}
+
 function buildIaxFullFrame({
 	sourceCall,
 	destCall,
@@ -72,15 +95,15 @@ function parseIaxFullFrame(buffer) {
 
 function pokeIaxServer({ host, port = IAX_PORT, timeoutMs = 2000 } = {}) {
 	if (typeof host !== "string" || host.length === 0) {
-		throw new Error("host is required and must be a non-empty string");
+		throw createCodedError("ERR_INVALID_HOST", "host is required and must be a non-empty string");
 	}
 
 	if (!Number.isFinite(port) || port < 1 || port > 65535) {
-		throw new Error("port must be a valid UDP port (1-65535)");
+		throw createCodedError("ERR_INVALID_PORT", "port must be a valid UDP port (1-65535)");
 	}
 
 	if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-		throw new Error("timeoutMs must be a positive integer in milliseconds");
+		throw createCodedError("ERR_INVALID_TIMEOUT", "timeoutMs must be a positive integer in milliseconds");
 	}
 
 	return new Promise((resolve, reject) => {
@@ -100,13 +123,18 @@ function pokeIaxServer({ host, port = IAX_PORT, timeoutMs = 2000 } = {}) {
 
 		const timeoutHandle = setTimeout(() => {
 			socket.close();
-			reject(new Error(`Timeout waiting for PONG after ${timeoutMs} ms`));
+			reject(
+				createCodedError(
+					"ERR_POKE_TIMEOUT",
+					`Timeout waiting for PONG after ${timeoutMs} ms`
+				)
+			);
 		}, timeoutMs);
 
 		socket.once("error", (err) => {
 			clearTimeout(timeoutHandle);
 			socket.close();
-			reject(err);
+			reject(toCodedError(err, "ERR_SOCKET", "Socket error while waiting for PONG"));
 		});
 
 		socket.on("message", (msg, rinfo) => {
@@ -151,7 +179,7 @@ function pokeIaxServer({ host, port = IAX_PORT, timeoutMs = 2000 } = {}) {
 			if (err) {
 				clearTimeout(timeoutHandle);
 				socket.close();
-				reject(err);
+				reject(toCodedError(err, "ERR_SEND_POKE", "Failed to send POKE frame"));
 			}
 		});
 	});
