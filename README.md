@@ -1,4 +1,4 @@
-# IAXPing.js
+# iaxping
 Simple node module to send POKE requests to an Asterisk server, following RFC 5456 (IAX2 protocol).
 
 ## Usage
